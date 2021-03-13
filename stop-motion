@@ -68,20 +68,23 @@ def main():
     opts = parser.parse_args()
 
     setup()
+    input("Ready to start: ")
 
     while True:
-        input("Ready to take shot: ")
+        print("Taking picture...")
         request("/gp/gpControl/command/shutter?p=1")
         time.sleep(3)
 
         media = request("/gp/gpMediaList")
-        print(latest(media))
-
         path = latest(media)
-        if path:
-            name = os.path.basename(path)
-            save(path, name)
-            os.system("eog " + name)
+        if not path:
+            print("Couldn't find a picture")
+            break
+
+        name = os.path.basename(path)
+        print("Saving", name)
+        save(path, name)
+        os.system("eog " + name)
 
     return 0
 
