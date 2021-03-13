@@ -1,0 +1,89 @@
+#!/usr/bin/env python3
+
+GOPRO    = "10.5.5.9"
+PORT     = 80
+MACADDR  = "f6:dd:9e:7c:2d:97"
+
+import argparse
+import json
+import os
+import sys
+import shutil
+import time
+import urllib.parse
+import urllib.request
+
+import http.client
+http.client.HTTPConnection.debuglevel = 1
+
+# Wake up the GoPro
+def setup():
+    # Wake up the GoPro
+    ret = os.system("wol -i {} -p 9 {}".format(GOPRO, MACADDR))
+    if ret != 0:
+        sys.exit(ret >> 8)
+
+    # Switch it to Photo mode
+    request("/gp/gpControl/command/mode", p=1)
+
+def request(path, **options):
+    url = urllib.parse.urljoin("http://" + GOPRO, path)
+    qs = urllib.parse.urlencode(options, quote_via=urllib.parse.quote)
+    sys.stderr.write(url + "?" + qs + "\n")
+    req = urllib.request.Request(url + "?" + qs)
+    return json.load(urllib.request.urlopen(req))
+
+def save(path, name):
+    url = urllib.parse.urljoin("http://" + GOPRO + ":8080/videos/DCIM/", path)
+    sys.stderr.write(url + "\n")
+    req = urllib.request.Request(url)
+    try:
+        with open(name, 'wb') as f:
+            shutil.copyfileobj(urllib.request.urlopen(req), f)
+    finally:
+        pass
+
+def latest(medialist):
+    when = 0
+    name = None
+    media = medialist.get('media')
+    if not media:
+        return None
+    for m in media:
+        if 'fs' not in m:
+            continue
+        directory = m.get('d', '')
+        for file in m['fs']:
+            try:
+                w = int(file.get('mod', 0))
+            except TypeError:
+                w = 0
+            if w > when:
+                when = w
+                name = os.path.join(directory, file.get('n'))
+    return name
+
+def main():
+    parser = argparse.ArgumentParser(description="Stop motion on our GoPro")
+    opts = parser.parse_args()
+
+    setup()
+
+    while True:
+        input("Ready to take shot: ")
+        request("/gp/gpControl/command/shutter?p=1")
+        time.sleep(3)
+
+        media = request("/gp/gpMediaList")
+        print(latest(media))
+
+        path = latest(media)
+        if path:
+            name = os.path.basename(path)
+            save(path, name)
+            os.system("eog " + name)
+
+    return 0
+
+if __name__ == '__main__':
+    sys.exit(main())
